@@ -32,3 +32,9 @@ jobs:
       - run: cargo test --locked --target ${{ matrix.target }}
       - run: cargo clippy --locked --target ${{ matrix.target }}
       - run: cargo build --locked --release --target ${{ matrix.target }}
+      # Lets a build be tried out before it's released (`gh run download`).
+      - uses: actions/upload-artifact@v7
+        with:
+          name: difm-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/difm${{ runner.os == 'Windows' && '.exe' || '' }}
+          retention-days: 14

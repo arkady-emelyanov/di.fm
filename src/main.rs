@@ -59,6 +59,9 @@ pub enum AppEvent {
     SkipsExpired(u64),
     QualityChanged(Result<(), String>),
     ReloadFollowed,
+    /// The popup lost focus a moment ago; close it unless it's still the active window.
+    #[cfg(windows)]
+    PopupBlurred,
     /// The user confirmed a tray menu action that asked first.
     Confirmed(TrayAction),
     StaleSession,
@@ -168,6 +171,17 @@ impl App {
                 match event {
                     WindowEvent::Focused(false) if is_popup => {
                         log::debug!("popup lost focus");
+                        // On Windows the popup also "loses focus" when its own web view
+                        // takes it; only another app becoming active should close it.
+                        #[cfg(windows)]
+                        {
+                            let proxy = self.proxy.clone();
+                            thread::spawn(move || {
+                                thread::sleep(Duration::from_millis(150));
+                                let _ = proxy.send_event(AppEvent::PopupBlurred);
+                            });
+                        }
+                        #[cfg(not(windows))]
                         self.hide_popup()
                     }
                     WindowEvent::CloseRequested if is_popup => self.hide_popup(),
@@ -371,6 +385,13 @@ impl App {
             }
 
             AppEvent::ReloadFollowed => self.load_followed(),
+
+            #[cfg(windows)]
+            AppEvent::PopupBlurred => {
+                if self.popup.as_ref().is_some_and(|p| p.is_visible() && !p.is_foreground()) {
+                    self.hide_popup();
+                }
+            }
 
             AppEvent::Confirmed(action) => match action {
                 TrayAction::Logout => self.forget_credentials(),

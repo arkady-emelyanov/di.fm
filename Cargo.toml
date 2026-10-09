@@ -27,6 +27,9 @@ ksni = { version = "0.3.6", default-features = false, features = ["async-io", "b
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 tray-icon = "0.26.1"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 [profile.release]
 opt-level = 3
 lto = true

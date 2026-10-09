@@ -229,6 +229,18 @@ impl View {
         self.window.is_visible()
     }
 
+    /// Whether this window (or one of its children, like the web view) is the window the
+    /// user is working in.
+    #[cfg(windows)]
+    pub fn is_foreground(&self) -> bool {
+        use tao::platform::windows::WindowExtWindows;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, GetForegroundWindow};
+
+        // SAFETY: plain Win32 queries on window handles; no memory is shared.
+        let root = unsafe { GetAncestor(GetForegroundWindow(), GA_ROOT) };
+        root as isize == self.window.hwnd()
+    }
+
     pub fn show(&self) {
         self.window.set_visible(true);
         self.window.set_minimized(false);
