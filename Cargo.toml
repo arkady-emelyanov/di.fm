@@ -2,7 +2,7 @@
 name = "difm"
 version = "1.0.1"
 edition = "2024"
-description = "DI.FM and JAZZRADIO premium player in the system tray"
+description = "DI.FM and JAZZRADIO system tray player. Premium subscription required."
 
 [dependencies]
 anyhow = "1.0.104"

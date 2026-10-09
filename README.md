@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/arkady-emelyanov/di.fm/actions/workflows/ci.yml/badge.svg)](https://github.com/arkady-emelyanov/di.fm/actions/workflows/ci.yml)
 
-A small tray app for DI.FM and JAZZRADIO premium: pick a station from the tray, without keeping a browser tab open. It plays the same high-quality, track-based streams as the official browser extension.
+DI.FM and JAZZRADIO system tray player. Premium subscription required.
 
-Unofficial: not affiliated with DI.FM, JAZZRADIO.com or AudioAddict. You need a premium account.
+Pick a station from the tray, without keeping a browser tab open. It plays the same high-quality, track-based streams as the official browser extension. Unofficial: not affiliated with DI.FM, JAZZRADIO.com or AudioAddict.
 
 ## Features
 
