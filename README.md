@@ -6,6 +6,11 @@ DI.FM and JAZZRADIO system tray player. Premium subscription required.
 
 Pick a station from the tray, without keeping a browser tab open. It plays the same high-quality, track-based streams as the official browser extension. Unofficial: not affiliated with DI.FM, JAZZRADIO.com or AudioAddict.
 
+<p>
+  <img src="docs/popup.png" alt="Tray popup with followed channels, playback controls and a volume slider" width="340">
+  <img src="docs/channels.png" alt="All channels window with search and genre filters" width="600">
+</p>
+
 ## Features
 
 - Tray popup with your followed channels, playlists and shows, a volume slider, play/pause, stop and skip.
