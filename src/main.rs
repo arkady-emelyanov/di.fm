@@ -182,9 +182,9 @@ impl App {
                             });
                         }
                         #[cfg(not(windows))]
-                        self.hide_popup()
+                        self.hide_popup("lost focus")
                     }
-                    WindowEvent::CloseRequested if is_popup => self.hide_popup(),
+                    WindowEvent::CloseRequested if is_popup => self.hide_popup("close requested"),
                     // Keep the channel browser alive (and its scroll position); just hide it.
                     WindowEvent::CloseRequested if is_channels => {
                         if let Some(w) = &self.channels_window {
@@ -388,8 +388,12 @@ impl App {
 
             #[cfg(windows)]
             AppEvent::PopupBlurred => {
-                if self.popup.as_ref().is_some_and(|p| p.is_visible() && !p.is_foreground()) {
-                    self.hide_popup();
+                if let Some(p) = &self.popup {
+                    let foreground = p.foreground_class();
+                    log::debug!("popup blurred; foreground window: {foreground}");
+                    if p.is_visible() && !p.is_foreground() {
+                        self.hide_popup("another window became active");
+                    }
                 }
             }
 
@@ -548,13 +552,13 @@ impl App {
             }
             UiMsg::Favorite { id, on } => self.set_favorite(id, on),
             UiMsg::OpenBrowser { mode } => {
-                self.hide_popup();
+                self.hide_popup("opening the browser");
                 self.open_browser(target, mode);
             }
             UiMsg::Follow { media, id, on } => self.set_following(media, id, on),
             UiMsg::LoadPage { seq, mode, page, query, genre } => self.load_page(seq, mode, page, query, genre),
             UiMsg::Login => {
-                self.hide_popup();
+                self.hide_popup("opening the login window");
                 self.open_login(target);
             }
             UiMsg::Logout => self.forget_credentials(),
@@ -567,14 +571,15 @@ impl App {
                     }
                 }
             }
-            UiMsg::Hide => self.hide_popup(),
+            UiMsg::Hide => self.hide_popup("requested by the page"),
         }
     }
 
     fn toggle_popup(&mut self, anchor: PhysicalPosition<i32>) {
         let Some(popup) = &self.popup else { return };
+        log::debug!("tray click at {},{} (popup visible: {})", anchor.x, anchor.y, popup.is_visible());
         if popup.is_visible() {
-            self.hide_popup();
+            self.hide_popup("tray click");
             return;
         }
         if self.popup_hidden_at.is_some_and(|t| t.elapsed() < REOPEN_GUARD) {
@@ -587,9 +592,10 @@ impl App {
         self.load_followed();
     }
 
-    fn hide_popup(&mut self) {
+    fn hide_popup(&mut self, why: &str) {
         if let Some(p) = &self.popup {
             if p.is_visible() {
+                log::debug!("hiding popup: {why}");
                 p.call("closeMenu", &());
                 p.hide();
                 self.popup_hidden_at = Some(Instant::now());
