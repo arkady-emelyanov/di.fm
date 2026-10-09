@@ -19,6 +19,7 @@ serde_json = "1.0.151"
 tokio = { version = "1.53.2", default-features = false, features = ["rt-multi-thread", "time", "net"] }
 tao = "0.37.1"
 wry = "0.57.0"
+souvlaki = "0.8.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"

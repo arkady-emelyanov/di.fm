@@ -4,6 +4,7 @@ mod api;
 mod config;
 mod desktop;
 mod login;
+mod media_keys;
 mod player;
 mod stream;
 mod tray;
@@ -20,6 +21,7 @@ use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWi
 use crate::api::{Api, Channel, ChannelFilter, Media, MediaKind, Network, Playlist, Quality, Show, SkipAllowance};
 use crate::config::{Credentials, Settings};
 use crate::login::LoginWindow;
+use crate::media_keys::{MediaKeys, NowPlaying};
 use crate::player::{Command, PlayerHandle, Status};
 use crate::tray::{Tray, TrayAction, TrayState};
 use crate::ui::{CatalogItem, ChannelView, FilterView, LibraryView, NetworkView, QualityView, StateView, TileView, UiMsg, View, ViewKind};
@@ -38,6 +40,8 @@ pub enum AppEvent {
     TrayAction(TrayAction),
     Ui(ViewKind, UiMsg),
     Player(player::Event),
+    /// A media key, headphone button or the desktop's media widget.
+    MediaKey(souvlaki::MediaControlEvent),
     /// A session for this network, from the login window or derived from another network's.
     LoggedIn(Network, Credentials),
     /// No session could be derived for this network; the user has to log in.
@@ -76,6 +80,7 @@ struct App {
     settings: Settings,
     creds: Option<Credentials>,
     tray: Option<Tray>,
+    media_keys: Option<MediaKeys>,
     popup: Option<View>,
     channels_window: Option<View>,
     login: Option<LoginWindow>,
@@ -128,6 +133,7 @@ fn main() -> Result<()> {
         settings,
         creds,
         tray: None,
+        media_keys: None,
         popup: None,
         channels_window: None,
         login: None,
@@ -214,6 +220,14 @@ impl App {
         match View::popup(target, self.proxy.clone()) {
             Ok(p) => self.popup = Some(p),
             Err(e) => log::error!("creating popup: {e:#}"),
+        }
+        #[cfg(windows)]
+        let hwnd = self.popup.as_ref().map(|p| p.hwnd());
+        #[cfg(not(windows))]
+        let hwnd = None;
+        match MediaKeys::new(self.proxy.clone(), hwnd) {
+            Ok(m) => self.media_keys = Some(m),
+            Err(e) => log::warn!("media keys unavailable: {e:#}"),
         }
         if let Err(e) = desktop::install() {
             log::warn!("installing the application entry: {e:#}");
@@ -321,6 +335,7 @@ impl App {
             AppEvent::TrayClick(pos) => self.toggle_popup(pos),
             AppEvent::TrayAction(action) => self.tray_action(action, target),
             AppEvent::Ui(kind, msg) => self.ui_message(kind, msg, target, control_flow),
+            AppEvent::MediaKey(event) => self.media_key(event),
 
             AppEvent::ForNetwork(network, ev) => {
                 if network == self.network() {
@@ -507,6 +522,23 @@ impl App {
             TrayAction::OpenChannels => self.open_browser(target, MediaKind::Channel),
             TrayAction::Login => self.open_login(target),
             TrayAction::Logout | TrayAction::Quit => self.confirm(action),
+        }
+    }
+
+    fn media_key(&mut self, event: souvlaki::MediaControlEvent) {
+        use souvlaki::MediaControlEvent as Key;
+        log::debug!("media key: {event:?}");
+        if self.creds.is_none() {
+            return;
+        }
+        let active = matches!(self.status, Status::Playing | Status::Loading);
+        match event {
+            Key::Toggle => self.toggle_playback(),
+            Key::Play if !active => self.toggle_playback(),
+            Key::Pause if self.status == Status::Playing => self.player.send(Command::TogglePause),
+            Key::Next => self.player.send(Command::Skip),
+            Key::Stop => self.player.send(Command::Stop),
+            _ => {}
         }
     }
 
@@ -1000,6 +1032,19 @@ impl App {
             (_, Some(ch), None) => ch.clone(),
         };
         let network = self.network();
+        if let Some(m) = self.media_keys.as_mut() {
+            m.update(NowPlaying {
+                status: Some(self.status.clone()),
+                // "Artist – Title" from the channel, or just the channel between tracks.
+                title: self.track.clone().or_else(|| media_name.clone()),
+                artist: Some(match (&self.track, &media_name) {
+                    (Some(_), Some(name)) => name.clone(),
+                    _ => network.name().to_owned(),
+                }),
+                cover_url: state.media_image.clone(),
+            });
+        }
+
         let can_play = self.creds.is_some() && self.settings.last_channel(network).is_some();
         if let Some(t) = self.tray.as_mut() {
             t.update(TrayState {

@@ -9,6 +9,7 @@ Pick a station from the tray, without keeping a browser tab open. It plays the s
 ## Features
 
 - Tray popup with your followed channels, playlists and shows, a volume slider, play/pause, stop and skip.
+- Media keys and headphone buttons play, pause, skip and stop; the current track and channel show up in the desktop's media controls (MPRIS on Linux, the media overlay on Windows, Now Playing on macOS).
 - Switch between DI.FM and JAZZRADIO with one click; your account works on both and the app creates the second session itself.
 - Browse all channels, playlists and shows, search them, filter by genre, and follow or unfollow from the list.
 - Audio quality setting (64k AAC-HE, 128k AAC or 320k MP3), shared with your account.

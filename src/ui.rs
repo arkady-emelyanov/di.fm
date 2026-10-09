@@ -241,6 +241,12 @@ impl View {
         root as isize == self.window.hwnd()
     }
 
+    #[cfg(windows)]
+    pub fn hwnd(&self) -> *mut std::ffi::c_void {
+        use tao::platform::windows::WindowExtWindows;
+        self.window.hwnd() as _
+    }
+
     /// Window class of the foreground window, for diagnostics.
     #[cfg(windows)]
     pub fn foreground_class(&self) -> String {
