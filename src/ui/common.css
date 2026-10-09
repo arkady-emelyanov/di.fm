@@ -1,0 +1,47 @@
+:root {
+  --bg: #12151b;
+  --bg-raised: #1a1e26;
+  --bg-hover: #232935;
+  --border: #272d38;
+  --text: #e8ebf0;
+  --muted: #8b93a1;
+  --accent: #2f8fff;
+  --accent-soft: rgba(47, 143, 255, .18);
+  --star: #ffc94d;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  user-select: none; -webkit-user-select: none; cursor: default;
+}
+button {
+  font: inherit; color: inherit; background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+button:hover { background: var(--bg-hover); }
+button:disabled { opacity: .4; cursor: default; background: var(--bg-raised); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary:hover { filter: brightness(1.08); }
+button.icon {
+  width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+}
+button.icon svg { width: 16px; height: 16px; fill: currentColor; }
+.muted { color: var(--muted); }
+.ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.tile { position: relative; border-radius: 8px; overflow: hidden; background: var(--bg-raised); cursor: pointer; }
+.tile img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; transition: transform .15s; }
+.tile:hover img { transform: scale(1.06); }
+.tile.active { box-shadow: 0 0 0 2px var(--accent); }
+.tile .eq {
+  position: absolute; left: 4px; bottom: 4px; display: none; gap: 2px; align-items: flex-end;
+  height: 12px; padding: 2px 3px; border-radius: 3px; background: rgba(0, 0, 0, .6);
+}
+.tile.active .eq { display: flex; }
+.tile .eq i { width: 2px; background: #fff; animation: eq .9s ease-in-out infinite; }
+.tile .eq i:nth-child(2) { animation-delay: -.3s; }
+.tile .eq i:nth-child(3) { animation-delay: -.6s; }
+.paused .tile .eq i, .tile.paused .eq i { animation-play-state: paused; }
+@keyframes eq { 0%, 100% { height: 3px; } 50% { height: 10px; } }

@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+/*COMMON_CSS*/
+html, body { overflow: hidden; }
+body { border: 1px solid var(--border); position: relative; }
+#root { display: flex; flex-direction: column; }
+
+header { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: 1px solid var(--border); }
+header .art { width: 44px; height: 44px; border-radius: 6px; background: var(--bg-raised); flex: none; object-fit: cover; }
+header .info { flex: 1; min-width: 0; }
+header .title { font-weight: 600; font-size: 14px; }
+header .track { font-size: 12px; }
+header .controls { display: flex; gap: 6px; flex: none; }
+
+nav.tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
+nav.tabs button {
+  flex: 1; padding: 5px 0; border-color: transparent; background: transparent; color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+nav.tabs button[hidden] { display: none; }
+nav.tabs button svg { width: 15px; height: 15px; fill: currentColor; flex: none; }
+nav.tabs button:hover { background: var(--bg-hover); color: var(--text); }
+nav.tabs button.on { background: var(--accent-soft); color: var(--text); }
+
+main { display: flex; gap: 10px; padding: 12px; min-height: 150px; }
+.panel { flex: 1; min-width: 0; display: flex; }
+.panel[hidden] { display: none; }
+.tiles { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-content: start; }
+.empty-note { flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; text-align: center; padding: 8px; }
+
+.volume { width: 34px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.volume .pct { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.slider { position: relative; flex: 1; width: 34px; min-height: 120px; cursor: pointer; touch-action: none; }
+.slider .rail { position: absolute; left: 50%; top: 8px; bottom: 8px; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--bg-hover); }
+.slider .fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 2px; background: var(--accent); }
+.slider .knob {
+  position: absolute; left: 50%; width: 14px; height: 14px; margin: 0 0 -7px -7px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+}
+.volume svg { width: 16px; height: 16px; fill: var(--muted); }
+
+footer { display: flex; gap: 8px; padding: 0 12px 12px; position: relative; }
+footer .grow { flex: 1; }
+/* Station switch: the two network logos, the active one highlighted. */
+.networks { display: flex; gap: 4px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); }
+.networks button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; opacity: .45; filter: grayscale(.6); }
+.networks button:hover { opacity: .8; filter: none; background: transparent; }
+.networks button.on { opacity: 1; filter: none; box-shadow: 0 0 0 2px var(--accent); }
+.networks img { width: 100%; height: 100%; border-radius: 6px; display: block; }
+#menu {
+  position: absolute; right: 12px; bottom: 50px; display: none; min-width: 140px; padding: 4px;
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+}
+#menu.open { display: block; }
+#confirm {
+  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 12, 16, .78);
+}
+#confirm[hidden] { display: none; }
+#confirm .box {
+  width: 260px; padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .55);
+}
+#confirm .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+#menu .item { padding: 7px 10px 7px 26px; border-radius: 5px; cursor: pointer; position: relative; white-space: nowrap; }
+#menu .item:hover { background: var(--bg-hover); }
+#menu .item.checked::before { content: '✓'; position: absolute; left: 9px; color: var(--accent); }
+#menu .label { padding: 6px 10px 2px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+#menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+</style>
+</head>
+<body>
+<div id="confirm" hidden>
+  <div class="box">
+    <div id="confirm-text"></div>
+    <div class="buttons">
+      <button id="confirm-no">Cancel</button>
+      <button class="primary" id="confirm-yes"></button>
+    </div>
+  </div>
+</div>
+<div id="root">
+  <header>
+    <img class="art" id="art" alt="">
+    <div class="info">
+      <div class="title ellipsis" id="title">Not playing</div>
+      <div class="track muted ellipsis" id="track">Pick a channel below</div>
+    </div>
+    <div class="controls">
+      <button class="icon" id="toggle" title="Play/Pause"></button>
+      <button class="icon" id="skip" title="Skip"></button>
+      <button class="icon" id="stop" title="Stop"></button>
+    </div>
+  </header>
+  <nav class="tabs" id="tabs">
+    <button data-tab="channels" class="on">Channels</button>
+    <button data-tab="playlists">Playlists</button>
+    <button data-tab="shows">Shows</button>
+  </nav>
+  <main>
+    <div class="panel" id="panel-channels"><div class="tiles" id="grid"></div></div>
+    <div class="panel" id="panel-playlists" hidden><div class="tiles" id="playlists"></div></div>
+    <div class="panel" id="panel-shows" hidden><div class="tiles" id="shows"></div></div>
+    <div class="volume" title="Volume (scroll to adjust)">
+      <span class="pct" id="pct">100%</span>
+      <div class="slider" id="slider"><div class="rail"><div class="fill" id="fill"></div></div><div class="knob" id="knob"></div></div>
+      <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+    </div>
+  </main>
+  <footer>
+    <div class="networks" id="networks"></div>
+    <button class="grow" id="all">All channels…</button>
+    <button class="icon" id="more" title="Settings"></button>
+    <div id="menu">
+      <div id="qualities"></div>
+      <div class="item" id="autostart">Start at login</div>
+      <hr>
+      <div class="item" id="account">Log out</div>
+      <div class="item" id="quit">Quit</div>
+    </div>
+  </footer>
+</div>
+<script>
+/*COMMON_JS*/
+(function () {
+  var library = { channels: [], filters: [] };
+  var state = { status: 'stopped', favorites: [], playlists: [], shows: [], qualities: [], volume: 1, loggedIn: false };
+  var byId = {};
+  var $ = function (id) { return document.getElementById(id); };
+  var LOGOS = __LOGOS__;
+
+  $('stop').innerHTML = ICONS.stop;
+  $('skip').innerHTML = ICONS.skip;
+  $('more').innerHTML = ICONS.settings;
+  $('toggle').addEventListener('click', function () { send({ kind: 'toggle' }); });
+  $('skip').addEventListener('click', function () { send({ kind: 'skip' }); });
+  $('autostart').addEventListener('click', function () { send({ kind: 'autostart', on: !state.autostart }); });
+  $('stop').addEventListener('click', function () { send({ kind: 'stop' }); });
+  var TAB_MEDIA = { channels: 'channel', playlists: 'playlist', shows: 'show' };
+  $('all').addEventListener('click', function () { send({ kind: 'openBrowser', mode: TAB_MEDIA[tab] }); });
+  $('more').addEventListener('click', function (e) { e.stopPropagation(); $('menu').classList.toggle('open'); });
+  // Destructive actions ask first, in an overlay inside the popup.
+  var confirmed = null;
+  function askConfirm(text, yes, msg) {
+    $('confirm-text').textContent = text;
+    $('confirm-yes').textContent = yes;
+    confirmed = msg;
+    $('confirm').hidden = false;
+    $('confirm-no').focus();
+  }
+  function closeConfirm() { $('confirm').hidden = true; confirmed = null; }
+  $('confirm-no').addEventListener('click', closeConfirm);
+  $('confirm-yes').addEventListener('click', function () { var msg = confirmed; closeConfirm(); if (msg) send(msg); });
+  $('account').addEventListener('click', function () {
+    if (state.loggedIn) askConfirm('Log out of DI.FM? Playback stops and you will need to log in again.', 'Log out', { kind: 'logout' });
+    else send({ kind: 'login' });
+  });
+  $('quit').addEventListener('click', function () { askConfirm('Quit DI.FM? Playback stops.', 'Quit', { kind: 'quit' }); });
+  document.addEventListener('click', function () { $('menu').classList.remove('open'); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('confirm').hidden) closeConfirm(); else send({ kind: 'hide' });
+  });
+
+  // Vertical volume slider: drag, click or scroll.
+  var slider = $('slider'), dragging = false;
+  function setVolumeUi(v) {
+    var pct = Math.round(v * 100);
+    $('fill').style.height = pct + '%';
+    // Knob travels over the rail (8px insets).
+    $('knob').style.bottom = 'calc(8px + (100% - 16px) * ' + v + ')';
+    $('pct').textContent = pct + '%';
+  }
+  function volumeAt(clientY) {
+    var r = slider.getBoundingClientRect();
+    var v = 1 - (clientY - r.top - 8) / (r.height - 16);
+    return Math.max(0, Math.min(1, Math.round(v * 100) / 100));
+  }
+  function setVolume(v, commit) {
+    state.volume = v;
+    setVolumeUi(v);
+    send({ kind: 'volume', value: v, commit: commit });
+  }
+  slider.addEventListener('pointerdown', function (e) {
+    dragging = true;
+    slider.setPointerCapture(e.pointerId);
+    setVolume(volumeAt(e.clientY), false);
+  });
+  slider.addEventListener('pointermove', function (e) { if (dragging) setVolume(volumeAt(e.clientY), false); });
+  slider.addEventListener('pointerup', function (e) { dragging = false; setVolume(volumeAt(e.clientY), true); });
+  var wheelCommit;
+  document.querySelector('.volume').addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var step = e.deltaY < 0 ? 0.05 : -0.05;
+    setVolume(Math.max(0, Math.min(1, Math.round((state.volume + step) * 100) / 100)), false);
+    clearTimeout(wheelCommit);
+    wheelCommit = setTimeout(function () { send({ kind: 'volume', value: state.volume, commit: true }); }, 400);
+  }, { passive: false });
+
+  function renderGrid() {
+    var grid = $('grid');
+    var main = grid.parentNode;
+    var note = main.querySelector('.empty-note');
+    if (note) note.remove();
+    grid.innerHTML = '';
+    grid.style.display = '';
+    if (!state.loggedIn) {
+      grid.style.display = 'none';
+      main.insertBefore(el('div', { class: 'empty-note' }, [
+        el('div', { class: 'muted', text: 'Log in to listen to your favourite channels.' }),
+        el('button', { class: 'primary', text: 'Log in to DI.FM', onclick: function () { send({ kind: 'login' }); } })
+      ]), grid);
+      return;
+    }
+    if (state.error || state.loading || !library.channels.length) {
+      grid.style.display = 'none';
+      var children = [el('div', { class: 'muted', text: state.error || 'Loading channels…' })];
+      main.insertBefore(el('div', { class: 'empty-note' }, children), grid);
+      return;
+    }
+    var favs = state.favorites.map(function (id) { return byId[id]; }).filter(Boolean);
+    if (!favs.length) {
+      grid.style.display = 'none';
+      main.insertBefore(el('div', { class: 'empty-note' }, [
+        el('div', { class: 'muted', text: 'No followed channels yet. Star channels in the full list to pin them here.' })
+      ]), grid);
+      return;
+    }
+    favs.forEach(function (ch) { grid.appendChild(channelTile(ch)); });
+    markActive(grid, state);
+  }
+
+  // Followed playlists or shows; `kind` is 'playlist' or 'show'.
+  function renderFollowed(boxId, items, kind, emptyText) {
+    var box = $(boxId);
+    var note = box.parentNode.querySelector('.empty-note');
+    if (note) note.remove();
+    box.innerHTML = '';
+    box.style.display = items.length ? '' : 'none';
+    if (!items.length) {
+      box.parentNode.appendChild(el('div', { class: 'empty-note' }, [el('div', { class: 'muted', text: emptyText })]));
+      return;
+    }
+    items.forEach(function (it) { box.appendChild(channelTile(it, kind)); });
+    markActive(box, state);
+  }
+  function renderPlaylists() {
+    renderFollowed('playlists', state.playlists, 'playlist', 'No followed playlists yet. Follow playlists on di.fm to see them here.');
+  }
+  function renderShows() {
+    renderFollowed('shows', state.shows, 'show', 'No followed shows yet. Follow shows on di.fm to see them here.');
+  }
+
+  var tab = 'channels';
+  function showTab(name) {
+    tab = name;
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === name); });
+    ['channels', 'playlists', 'shows'].forEach(function (t) { $('panel-' + t).hidden = t !== name; });
+    $('all').textContent = 'All ' + name + '…';
+  }
+  document.querySelectorAll('#tabs button').forEach(function (b) {
+    tabIcon(b, TAB_MEDIA[b.getAttribute('data-tab')]);
+    b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); });
+  });
+  function renderTabs() {
+    // Playlists and shows exist on some networks only; with channels alone, or logged
+    // out (the login prompt lives on the channels tab), there's nothing to switch.
+    var has = { channels: true, playlists: state.hasPlaylists, shows: state.hasShows };
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.hidden = !has[b.getAttribute('data-tab')]; });
+    $('tabs').style.display = state.loggedIn && (state.hasPlaylists || state.hasShows) ? '' : 'none';
+    if ((!state.loggedIn || !has[tab]) && tab !== 'channels') showTab('channels');
+  }
+
+  var shownNetworks = '';
+  function renderNetworks() {
+    var key = JSON.stringify([state.networks, state.network]);
+    if (key === shownNetworks) return;
+    shownNetworks = key;
+    var box = $('networks');
+    box.innerHTML = '';
+    (state.networks || []).forEach(function (n) {
+      var b = el('button', { class: n.id === state.network ? 'on' : '', title: n.name }, [el('img', { alt: n.name, src: LOGOS[n.id] })]);
+      b.addEventListener('click', function () { if (n.id !== state.network) send({ kind: 'network', network: n.id }); });
+      box.appendChild(b);
+    });
+  }
+
+  function renderMenu() {
+    var box = $('qualities');
+    box.innerHTML = '';
+    if (state.qualities.length) {
+      box.appendChild(el('div', { class: 'label', text: 'Audio quality' }));
+      state.qualities.forEach(function (q) {
+        box.appendChild(el('div', {
+          class: 'item' + (q.id === state.quality ? ' checked' : ''), text: q.label,
+          onclick: function () { send({ kind: 'quality', id: q.id }); }
+        }));
+      });
+      box.appendChild(el('hr'));
+    }
+    $('autostart').style.display = state.autostart === null ? 'none' : '';
+    $('autostart').classList.toggle('checked', !!state.autostart);
+  }
+
+  function renderHeader() {
+    // Always show the last channel; fall back to the logo if there is none or it no
+    // longer exists in the catalogue.
+    var ch = state.mediaId != null ? { name: state.mediaName || '', image: state.mediaImage } : null;
+    $('art').src = ch && ch.image ? ch.image : LOGOS[state.network || 'di'];
+    $('title').textContent = ch ? ch.name : 'Not playing';
+    var sub = ch ? 'Not playing' : 'Pick a channel below';
+    if (ch && state.status === 'loading') sub = 'Tuning in…';
+    else if (ch && state.status === 'playing') sub = state.track || '';
+    else if (ch && state.status === 'paused') sub = 'Paused' + (state.track ? ' · ' + state.track : '');
+    $('track').textContent = sub;
+    $('track').title = sub;
+    var playing = state.status === 'playing' || state.status === 'loading';
+    $('toggle').innerHTML = playing ? ICONS.pause : ICONS.play;
+    $('toggle').disabled = !ch || !state.loggedIn;
+    $('stop').disabled = state.status === 'stopped' || !state.loggedIn;
+    // Show episodes don't count against the skip allowance.
+    var free = state.mediaKind === 'show';
+    $('skip').disabled = state.status !== 'playing' || !state.loggedIn || (state.skipsRemaining === 0 && !free);
+    $('skip').title = free || state.skipsRemaining == null ? 'Skip' :
+      state.skipsRemaining === 0 ? 'No skips left for now' : 'Skip (' + state.skipsRemaining + ' left)';
+    $('account').textContent = state.loggedIn ? 'Log out' : 'Log in';
+  }
+
+  function reportSize() { send({ kind: 'size', height: $('root').getBoundingClientRect().height + 2 }); }
+  new ResizeObserver(reportSize).observe($('root'));
+
+  window.app = {
+    setLibrary: function (lib) {
+      library = lib;
+      byId = {};
+      lib.channels.forEach(function (c) { byId[c.id] = c; });
+      renderGrid(); renderHeader();
+    },
+    render: function (s) {
+      var favsChanged = JSON.stringify(s.favorites) !== JSON.stringify(state.favorites) ||
+        s.loggedIn !== state.loggedIn || s.loading !== state.loading || s.error !== state.error;
+      var playlistsChanged = JSON.stringify(s.playlists) !== JSON.stringify(state.playlists) || s.loggedIn !== state.loggedIn;
+      var showsChanged = JSON.stringify(s.shows) !== JSON.stringify(state.shows) || s.loggedIn !== state.loggedIn;
+      state = s;
+      if (!dragging) setVolumeUi(s.volume);
+      if (favsChanged) renderGrid(); else markActive($('grid'), state);
+      if (playlistsChanged) renderPlaylists(); else markActive($('playlists'), state);
+      if (showsChanged) renderShows(); else markActive($('shows'), state);
+      renderTabs();
+      renderHeader();
+      renderMenu();
+      renderNetworks();
+    },
+    closeMenu: function () { $('menu').classList.remove('open'); closeConfirm(); }
+  };
+  setVolumeUi(1);
+  renderHeader();
+})();
+</script>
+</body>
+</html>

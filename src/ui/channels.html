@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+/*COMMON_CSS*/
+body { min-height: 100vh; }
+.bar {
+  position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 18px 12px; background: rgba(18, 21, 27, .96); border-bottom: 1px solid var(--border);
+}
+.row { display: flex; align-items: center; gap: 12px; }
+#search {
+  flex: 1; padding: 9px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-raised); color: inherit; font: inherit; outline: none;
+}
+#search:focus { border-color: var(--accent); }
+#now { font-size: 12px; max-width: 35%; }
+.modes { display: flex; gap: 4px; flex: none; }
+.modes button {
+  padding: 6px 12px; border-color: transparent; background: transparent; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.modes button[hidden] { display: none; }
+.modes button svg { width: 15px; height: 15px; fill: currentColor; flex: none; }
+.modes button:hover { background: var(--bg-hover); color: var(--text); }
+.modes button.on { background: var(--accent-soft); color: var(--text); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 4px 11px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-raised); cursor: pointer; font-size: 12px; }
+.chip:hover { background: var(--bg-hover); }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); color: #fff; }
+
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 16px; padding: 18px; }
+.card { display: flex; flex-direction: column; gap: 6px; }
+.card .name { font-weight: 600; }
+.card .desc { font-size: 11px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fav {
+  position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .55); color: #fff;
+  opacity: 0; transition: opacity .12s;
+}
+.fav svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; }
+.tile:hover .fav, .fav.on { opacity: 1; }
+.fav.on { color: var(--star); }
+.fav.on svg { fill: currentColor; }
+.fav:hover { background: rgba(0, 0, 0, .8); }
+#empty { padding: 40px; text-align: center; display: none; }
+#more { padding: 0 18px 24px; text-align: center; min-height: 1px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <div class="row">
+    <nav class="modes" id="modes">
+      <button data-mode="channel">Channels</button>
+      <button data-mode="playlist">Playlists</button>
+      <button data-mode="show">Shows</button>
+    </nav>
+    <input id="search" type="search" placeholder="Search channels…" autofocus>
+    <div id="now" class="muted ellipsis"></div>
+  </div>
+  <div class="chips" id="chips"></div>
+</div>
+<div id="grid"></div>
+<div id="empty" class="muted"></div>
+<div id="more" class="muted"></div>
+<script>
+/*COMMON_JS*/
+(function () {
+  var library = { channels: [], filters: [] };
+  var tags = [];
+  var state = { status: 'stopped', favorites: [], playlists: [], shows: [] };
+  var mode = 'channel', filter = 'all', query = '';
+  var $ = function (id) { return document.getElementById(id); };
+  var NOUN = { channel: 'channels', playlist: 'playlists', show: 'shows' };
+
+  // Playlists and shows come from the server a page at a time, as the list scrolls.
+  // `seq` tags each request so pages from an outdated search/filter are dropped.
+  var paged = { seq: 0, page: 0, more: false, loading: false, error: null };
+  function remote() { return mode !== 'channel' && filter !== 'following'; }
+
+  var searchTimer;
+  $('search').addEventListener('input', function (e) {
+    query = e.target.value.trim().toLowerCase();
+    if (!remote()) { applyFilter(); return; }
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(rebuild, 300);
+  });
+  document.querySelectorAll('#modes button').forEach(function (b) {
+    tabIcon(b, b.getAttribute('data-mode'));
+    b.addEventListener('click', function () { send({ kind: 'openBrowser', mode: b.getAttribute('data-mode') }); });
+  });
+
+  // Ids the member follows in the current mode.
+  function following() {
+    if (mode === 'channel') return state.favorites;
+    return (mode === 'playlist' ? state.playlists : state.shows).map(function (p) { return p.id; });
+  }
+
+  function chips() {
+    var box = $('chips');
+    box.innerHTML = '';
+    var genres;
+    if (mode === 'playlist') genres = tags.slice(0, 24).map(function (t) { return { key: t, name: t }; });
+    else genres = library.filters.map(function (f) { return { key: String(f.id), name: f.name }; });
+    var all = [{ key: 'all', name: 'All' }, { key: 'following', name: mode === 'channel' ? '★ Favourites' : '★ Following' }].concat(genres);
+    if (!all.some(function (c) { return c.key === filter; })) filter = 'all';
+    all.forEach(function (f) {
+      box.appendChild(el('div', {
+        class: 'chip' + (f.key === filter ? ' on' : ''), text: f.name,
+        onclick: function () { filter = f.key; chips(); rebuild(); }
+      }));
+    });
+  }
+
+  function card(it) {
+    var tile = channelTile(it, mode);
+    var fav = el('button', { class: 'fav', title: mode === 'channel' ? 'Favourite' : 'Follow' });
+    fav.innerHTML = ICONS.star;
+    fav.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var on = !fav.classList.contains('on');
+      send(mode === 'channel' ? { kind: 'favorite', id: it.id, on: on } : { kind: 'follow', media: mode, id: it.id, on: on });
+    });
+    tile.appendChild(fav);
+    var desc = it.description || '';
+    return el('div', { class: 'card', 'data-id': it.id, 'data-search': (it.name + ' ' + desc).toLowerCase() }, [
+      tile,
+      el('div', { class: 'name ellipsis', text: it.name, title: it.name }),
+      el('div', { class: 'desc', text: desc, title: desc })
+    ]);
+  }
+
+  // Starts the list over for the current mode, filter and search.
+  function rebuild() {
+    $('grid').innerHTML = '';
+    paged = { seq: paged.seq + 1, page: 0, more: remote(), loading: false, error: null };
+    if (mode === 'channel') {
+      library.channels.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+        .forEach(function (ch) { $('grid').appendChild(card(ch)); });
+    } else if (filter === 'following') {
+      (mode === 'playlist' ? state.playlists : state.shows).forEach(function (it) { $('grid').appendChild(card(it)); });
+    }
+    applyFilter();
+    renderState();
+    loadMore();
+  }
+
+  function loadMore() {
+    if (!paged.more || paged.loading) return;
+    paged.loading = true;
+    updateFooter();
+    var genre = filter === 'all' ? null : filter;
+    send({ kind: 'loadPage', seq: paged.seq, mode: mode, page: paged.page + 1, query: query, genre: genre });
+  }
+
+  // Fetch the next page once the end of the list comes near.
+  new IntersectionObserver(function (entries) {
+    if (entries[0].isIntersecting) loadMore();
+  }, { rootMargin: '600px' }).observe($('more'));
+
+  function updateFooter() {
+    $('more').textContent = paged.error || (paged.loading ? 'Loading ' + NOUN[mode] + '…' : '');
+  }
+
+  // Local filtering: everything for channels, search within followed items.
+  function applyFilter() {
+    var ids = null;
+    if (mode === 'channel' && filter === 'following') ids = state.favorites;
+    else if (mode === 'channel' && filter !== 'all') {
+      var f = library.filters.filter(function (f) { return String(f.id) === filter; })[0];
+      ids = f ? f.ids : [];
+    }
+    var local = !remote();
+    var shown = 0;
+    document.querySelectorAll('.card').forEach(function (card) {
+      var id = Number(card.getAttribute('data-id'));
+      var ok = !local || ((!ids || ids.indexOf(id) >= 0) && (!query || card.getAttribute('data-search').indexOf(query) >= 0));
+      card.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    var empty = !shown && !paged.loading && !paged.more && !paged.error && (mode !== 'channel' || library.channels.length);
+    $('empty').textContent = 'No ' + NOUN[mode] + ' match.';
+    $('empty').style.display = empty ? 'block' : 'none';
+  }
+
+  function renderState() {
+    markActive($('grid'), state);
+    var followed = following();
+    document.querySelectorAll('.card').forEach(function (card) {
+      var id = Number(card.getAttribute('data-id'));
+      card.querySelector('.fav').classList.toggle('on', followed.indexOf(id) >= 0);
+    });
+    var now = '';
+    if (state.status !== 'stopped' && state.mediaName) {
+      now = (state.status === 'paused' ? 'Paused · ' : 'Now playing · ') + state.mediaName + (state.track ? ' — ' + state.track : '');
+    }
+    $('now').textContent = now;
+    $('now').title = now;
+  }
+
+  function setMode(m) {
+    if (m !== mode) {
+      filter = 'all';
+      query = '';
+      $('search').value = '';
+    }
+    mode = m;
+    document.querySelectorAll('#modes button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === m); });
+    $('search').placeholder = 'Search ' + NOUN[m] + '…';
+    chips();
+    rebuild();
+  }
+
+  window.app = {
+    setLibrary: function (lib) { library = lib; if (mode !== 'playlist') chips(); if (mode === 'channel') rebuild(); },
+    setTags: function (t) { tags = t; if (mode === 'playlist') chips(); },
+    setMode: setMode,
+    appendPage: function (r) {
+      if (r.seq !== paged.seq) return;
+      paged.loading = false;
+      if (r.error) {
+        paged.error = r.error;
+        paged.more = false;
+      } else {
+        paged.page = r.page;
+        paged.more = r.more && r.items.length > 0;
+        var grid = $('grid');
+        r.items.forEach(function (it) { grid.appendChild(card(it)); });
+      }
+      updateFooter();
+      applyFilter();
+      renderState();
+      // Keep going while the sentinel is still on screen.
+      var rect = $('more').getBoundingClientRect();
+      if (rect.top < window.innerHeight + 600) loadMore();
+    },
+    render: function (s) {
+      // Playlists and shows exist on some networks only; with channels alone there's nothing to switch.
+      var has = { channel: true, playlist: s.hasPlaylists, show: s.hasShows };
+      document.querySelectorAll('#modes button').forEach(function (b) { b.hidden = !has[b.getAttribute('data-mode')]; });
+      $('modes').style.display = s.hasPlaylists || s.hasShows ? '' : 'none';
+      var followedChanged = JSON.stringify(following()) !== JSON.stringify((mode === 'playlist' ? s.playlists : mode === 'show' ? s.shows : s.favorites).map(function (x) { return x.id || x; }));
+      state = s;
+      if (filter === 'following' && followedChanged) rebuild(); else { renderState(); applyFilter(); }
+    },
+    focusSearch: function () { $('search').focus(); }
+  };
+  setMode('channel');
+})();
+</script>
+</body>
+</html>

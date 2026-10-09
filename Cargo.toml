@@ -1,0 +1,34 @@
+[package]
+name = "difm"
+version = "1.0.0"
+edition = "2024"
+description = "DI.FM and JAZZRADIO premium player in the system tray"
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+directories = "6.0.0"
+env_logger = "0.11.11"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+log = "0.4.34"
+notify-rust = "4.18.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "blocking", "query"] }
+rodio = { version = "0.22.2", default-features = false, features = ["playback", "symphonia-aac", "symphonia-isomp4", "symphonia-mp3"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.2", default-features = false, features = ["rt-multi-thread", "time", "net"] }
+tao = "0.37.1"
+wry = "0.57.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+ksni = { version = "0.3.6", default-features = false, features = ["async-io", "blocking"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tray-icon = "0.26.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
