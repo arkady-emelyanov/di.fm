@@ -65,6 +65,7 @@ impl Tray {
 
         let click_proxy = proxy.clone();
         TrayIconEvent::set_event_handler(Some(move |e: TrayIconEvent| {
+            log::debug!("tray event: {e:?}");
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, position, .. } = e {
                 let pos = PhysicalPosition::new(position.x as i32, position.y as i32);
                 let _ = click_proxy.send_event(AppEvent::TrayClick(pos));

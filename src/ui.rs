@@ -241,6 +241,22 @@ impl View {
         root as isize == self.window.hwnd()
     }
 
+    /// Window class of the foreground window, for diagnostics.
+    #[cfg(windows)]
+    pub fn foreground_class(&self) -> String {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow};
+
+        let mut buf = [0u16; 128];
+        // SAFETY: plain Win32 queries; the buffer outlives the call and its length is passed.
+        let len = unsafe {
+            let fg = GetForegroundWindow();
+            let n = GetClassNameW(GetAncestor(fg, GA_ROOT), buf.as_mut_ptr(), buf.len() as i32);
+            n.max(0) as usize
+        };
+        let own = if self.is_foreground() { " (the popup)" } else { "" };
+        format!("{}{own}", String::from_utf16_lossy(&buf[..len]))
+    }
+
     pub fn show(&self) {
         self.window.set_visible(true);
         self.window.set_minimized(false);
