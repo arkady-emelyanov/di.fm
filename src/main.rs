@@ -34,6 +34,21 @@ const ART_SIZE: u32 = 280;
 /// dismissed it; don't reopen.
 const REOPEN_GUARD: Duration = Duration::from_millis(300);
 
+/// Total time to keep retrying when the desktop's tray isn't up yet (at login we can start
+/// before it).
+const TRAY_RETRY_FOR: Duration = Duration::from_secs(10);
+
+/// Waits between tray attempts: 250 ms, doubling, until `TRAY_RETRY_FOR` has been spent
+/// waiting.
+fn tray_backoff() -> impl Iterator<Item = Duration> {
+    let mut left = TRAY_RETRY_FOR;
+    std::iter::successors(Some(Duration::from_millis(250)), |d| Some(*d * 2)).map_while(move |d| {
+        let d = d.min(left);
+        left -= d;
+        (!d.is_zero()).then_some(d)
+    })
+}
+
 #[derive(Debug)]
 pub enum AppEvent {
     TrayClick(PhysicalPosition<i32>),
@@ -69,6 +84,8 @@ pub enum AppEvent {
     /// The user confirmed a tray menu action that asked first.
     Confirmed(TrayAction),
     StaleSession,
+    /// Try creating the tray icon again; this is retry number N (from 0).
+    RetryTray(usize),
 }
 
 type Target = EventLoopWindowTarget<AppEvent>;
@@ -168,7 +185,7 @@ fn main() -> Result<()> {
 impl App {
     fn handle(&mut self, event: Event<AppEvent>, target: &Target, control_flow: &mut ControlFlow) {
         match event {
-            Event::NewEvents(StartCause::Init) => self.start(target, control_flow),
+            Event::NewEvents(StartCause::Init) => self.start(0, target, control_flow),
 
             Event::WindowEvent { window_id, event, .. } => {
                 let is_popup = self.popup.as_ref().is_some_and(|p| p.id() == window_id);
@@ -207,12 +224,26 @@ impl App {
         }
     }
 
-    fn start(&mut self, target: &Target, control_flow: &mut ControlFlow) {
+    /// Starts the app once the tray icon exists; without one there is nothing to control
+    /// it with, so failing attempts are retried with backoff, then the app exits.
+    fn start(&mut self, attempt: usize, target: &Target, control_flow: &mut ControlFlow) {
         match Tray::new(self.proxy.clone()) {
             Ok(t) => self.tray = Some(t),
             Err(e) => {
-                log::error!("cannot create tray icon: {e:#}");
-                *control_flow = ControlFlow::Exit;
+                match tray_backoff().nth(attempt) {
+                    Some(wait) => {
+                        log::warn!("cannot create tray icon, retrying in {wait:?}: {e:#}");
+                        let proxy = self.proxy.clone();
+                        thread::spawn(move || {
+                            thread::sleep(wait);
+                            let _ = proxy.send_event(AppEvent::RetryTray(attempt + 1));
+                        });
+                    }
+                    None => {
+                        log::error!("cannot create tray icon: {e:#}");
+                        *control_flow = ControlFlow::Exit;
+                    }
+                }
                 return;
             }
         }
@@ -336,6 +367,7 @@ impl App {
             AppEvent::TrayAction(action) => self.tray_action(action, target),
             AppEvent::Ui(kind, msg) => self.ui_message(kind, msg, target, control_flow),
             AppEvent::MediaKey(event) => self.media_key(event),
+            AppEvent::RetryTray(attempt) => self.start(attempt, target, control_flow),
 
             AppEvent::ForNetwork(network, ev) => {
                 if network == self.network() {
@@ -1104,4 +1136,17 @@ fn notify(summary: &str, body: &str) {
             log::debug!("notification failed: {e}");
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    #[test]
+    fn tray_backoff_doubles_and_stops_at_ten_seconds() {
+        let waits: Vec<_> = super::tray_backoff().collect();
+        let ms: Vec<_> = waits.iter().map(Duration::as_millis).collect();
+        assert_eq!(ms, [250, 500, 1000, 2000, 4000, 2250]);
+        assert_eq!(waits.iter().sum::<Duration>(), super::TRAY_RETRY_FOR);
+    }
 }
